@@ -1,3 +1,5 @@
+# Sarima Branch
+
 ## 1. open_prices.csv – Exploratory Data Analysis (EDA)
 
 This section describes the exploratory data analysis (EDA) performed on the **`open_prices.csv`** dataset, along with the limitations we encountered and the motivation for sourcing a new dataset.
@@ -84,7 +86,13 @@ This EDA phase was crucial in understanding both the strengths and limitations o
 we will use the both the datafram to create the model , and then check which will gives us the good data 
 
 ### 2.1 df_electrnoincs - for the ElectronicsProductsPricingData.cv
-  - we will use the 
+  - In thie dataset ,we have found that "id" column has many duplicated values , but with different values of price amountMax and amountMin , so we have diferenced the value and made one column of price difference, from where we have found that when the price was on sale , still sometimes the price amountMax and Price AmountMin is same.
+  - we ahve use the heatmap to found the correlation between the price maxAmount and price minAmount
+  - In the electronics producst dataset , there were some noises due to the year , that is the year 2014 and 2015 contains very less data as compared with the other others 
 
 ### 2.2 smart_discount_analyzer_dataset_50k.csv
-
+ -- here , we do not have remove any columns , and we have change the date set to the datetime format , furthermore , we have checked if there any year data that we do not need , but all the checking were , and there was no removal of the data.
+ - from the seaborn lineplot , we have seen that the 2023 contains from jan to june, where the 2024 data contains the data from the june to dec
+ - we have use the pandas resample to convert the daily data into weekly and montly by using the mean.
+ - we also use the index for months and year in the reviewdate columns , furthermore , we have use the pivot table(rehsaping and summarzing the data in the dataframe), wher we have sent the month index to groupby , and then values(discount) to summarize the numerical value , and agg value which is (aggfunc). we have then use the pivottable to plot 
+ - 
