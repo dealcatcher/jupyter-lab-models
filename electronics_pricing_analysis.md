@@ -23,7 +23,7 @@
 
 ---
 
-## 2. 📅 Discount Patterns by Day of Week (2017 vs 2018)
+## 2. Discount Patterns by Day of Week (2017 vs 2018)
 
 **Chart:** Average Discount Percent by Day of Week — Bar Chart
 
@@ -47,7 +47,7 @@
 
 ---
 
-## 3. 📆 Seasonal Discount Patterns by Month (2017 vs 2018)
+## 3. Seasonal Discount Patterns by Month (2017 vs 2018)
 
 **Chart:** Discount Seasonality using Date Seen — Line Chart
 
@@ -69,7 +69,7 @@
 
 ---
 
-## 4. 🔥 Correlation Heatmap
+## 4. Correlation Heatmap
 
 **Chart:** Electronics Products Pricing Data Correlation Heatmap
 
@@ -92,7 +92,7 @@
 
 ---
 
-## 5. 🔵 Scatterplot Analysis (Prices & Discounts over Time)
+## 5. Scatterplot Analysis (Prices & Discounts over Time)
 
 **Chart:** 4-Panel Scatterplot — Min/Max Prices, Discount % vs Date Added/Seen/Updated
 
@@ -121,7 +121,7 @@
 
 ---
 
-## 6. 📈 Lag-1 Relationship
+## 6. Lag-1 Relationship
 
 **Chart:** Lag-1 Scatter Plot — Current Discount (t) vs Previous Discount (t-1)
 
@@ -137,7 +137,7 @@
 
 ---
 
-## 7. 🗺️ Recommended Next Steps — Modeling Roadmap
+## 7. Recommended Next Steps — Modeling Roadmap
 
 ### Step 1 — Data Preprocessing & Feature Engineering
 - Handle two-tier discount structure (classify → regress)
@@ -172,7 +172,7 @@
 
 ---
 
-## 8. 📌 Summary of Critical Findings
+## 8. Summary of Critical Findings
 
 | # | Finding | Impact |
 |---|---------|--------|
