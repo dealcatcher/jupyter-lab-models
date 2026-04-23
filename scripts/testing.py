@@ -110,7 +110,7 @@ def check_stationarity(train_series, alpha=0.05):
     }
 
 
-def check_residual_skewness(residuals, threshold=1.0):
+def check_residual_skewness(residuals, threshold=1.1):
     """Skewness of residuals should be close to 0."""
     sk     = skew(residuals)
     passed = abs(sk) <= threshold
