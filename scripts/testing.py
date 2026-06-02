@@ -52,6 +52,68 @@ def check_rmse_percent(rmse, actual, threshold=20.0, nonzero_only=False):
     }
 
 
+def check_mape(actual, forecast, threshold=20.0, nonzero_only=True):
+    """
+    MAPE (Mean Absolute Percentage Error).
+    By default computed only on non-zero actuals to avoid division-by-zero.
+    """
+    actual   = np.array(actual)
+    forecast = np.array(forecast)
+
+    if nonzero_only:
+        mask  = actual > 0
+        label = "non-zero periods"
+    else:
+        mask  = np.ones(len(actual), dtype=bool)
+        label = "all periods"
+
+    if mask.sum() == 0:
+        return {
+            "check"     : f"MAPE ({label})",
+            "value"     : "N/A (no non-zero actuals)",
+            "threshold" : f"<= {threshold}%",
+            "passed"    : True,
+            "advice"    : "✅ No non-zero actuals to evaluate.",
+        }
+
+    mape   = np.mean(np.abs((actual[mask] - forecast[mask]) / actual[mask])) * 100
+    passed = mape <= threshold
+    return {
+        "check"     : f"MAPE ({label})",
+        "value"     : f"{mape:.2f}%",
+        "threshold" : f"<= {threshold}%",
+        "passed"    : passed,
+        "advice"    : f"✅ MAPE is acceptable ({mape:.1f}%)." if passed
+                      else f"❌ MAPE too high ({mape:.1f}%) → model misses relative magnitude; try log transform or richer features.",
+    }
+
+
+def check_aic(aic, aic_threshold=None):
+    """
+    AIC check. Lower is better.
+    If aic_threshold is None the check is informational (always passes).
+    Pass an explicit threshold (e.g. from a baseline model) for a hard gate.
+    """
+    if aic_threshold is None:
+        return {
+            "check"     : "AIC (model complexity)",
+            "value"     : f"{aic:.4f}",
+            "threshold" : "informational (lower = better)",
+            "passed"    : True,
+            "advice"    : f"✅ AIC = {aic:.2f}. Compare across candidate models; prefer the lowest.",
+        }
+
+    passed = aic <= aic_threshold
+    return {
+        "check"     : "AIC (model complexity)",
+        "value"     : f"{aic:.4f}",
+        "threshold" : f"<= {aic_threshold:.4f}",
+        "passed"    : passed,
+        "advice"    : f"✅ AIC within threshold ({aic:.2f})." if passed
+                      else f"❌ AIC too high ({aic:.2f} > {aic_threshold:.2f}) → consider simpler order or revisit seasonal terms.",
+    }
+
+
 def check_residual_mean(residuals, tolerance=0.05):
     """Residual mean should be close to 0."""
     mean   = residuals.mean()
@@ -286,6 +348,8 @@ def _recommend(results):
     for r in failed:
         name = r["check"]
         if "RMSE"        in name: fixes.add("→ Apply log1p transform or add exogenous features")
+        if "MAPE"        in name: fixes.add("→ Apply log1p transform or add exogenous features (relative errors too large)")
+        if "AIC"         in name: fixes.add("→ Simplify model order or revisit seasonal terms to reduce AIC")
         if "Bias"        in name: fixes.add("→ Check for missing seasonal terms; try D=1")
         if "Autocorr"    in name: fixes.add("→ Increase p/q range or set d=1")
         if "Normality"   in name: fixes.add("→ Apply log1p or Box-Cox transform")
@@ -415,7 +479,8 @@ def _plot_two_stage(train, test, actual, final_forecast, sarima_forecast,
 # ═══════════════════════════════════════════════════════════════
 
 def check_model_performance(model_name, model_fit, train, test, forecast, best_params,
-                             rmse_threshold=20.0, plot=True):
+                             rmse_threshold=20.0, mape_threshold=20.0,
+                             aic_threshold=None, plot=True):
     """
     Full performance check for SARIMA model.
 
@@ -427,6 +492,8 @@ def check_model_performance(model_name, model_fit, train, test, forecast, best_p
     forecast       : array-like, predicted values (same length as test)
     best_params    : tuple, e.g. (p, d, q, P, D, Q, m)
     rmse_threshold : RMSE% threshold (default 20)
+    mape_threshold : MAPE threshold in % (default 20)
+    aic_threshold  : AIC upper bound; None = informational only
     plot           : whether to show diagnostic plots
     """
     forecast  = np.array(forecast)
@@ -434,8 +501,12 @@ def check_model_performance(model_name, model_fit, train, test, forecast, best_p
     rmse      = np.sqrt(np.mean(residuals ** 2))
     aic       = model_fit.aic
 
+    mape_result = check_mape(test["y"].values, forecast, threshold=mape_threshold)
+
     results = [
         check_rmse_percent(rmse, test["y"].values, threshold=rmse_threshold),
+        mape_result,
+        check_aic(aic, aic_threshold=aic_threshold),
         check_residual_mean(residuals),
         check_ljung_box(residuals),
         check_shapiro(residuals),
@@ -445,10 +516,21 @@ def check_model_performance(model_name, model_fit, train, test, forecast, best_p
         check_spike_capture(test["y"].values, forecast),
     ]
 
+    try:
+        mlflow.log_metric("SARIMA RMSE", rmse)
+        mlflow.log_metric("SARIMA AIC",  aic)
+        _mape_float = float(mape_result["value"].replace("%", "").strip())                       if "%" in mape_result["value"] else None
+        if _mape_float is not None:
+            mlflow.log_metric("SARIMA MAPE", _mape_float)
+        mlflow.log_param("SARIMA Best Params", str(best_params))
+    except Exception as e:
+        print(f"  ⚠️  MLflow logging skipped (no active run or connection error): {e}")
+
     _print_summary(results, "SARIMA MODEL PERFORMANCE REPORT", {
         "Best Params" : str(best_params),
         "RMSE"        : f"{rmse:.4f}",
         "AIC"         : f"{aic:.4f}",
+        "MAPE"        : mape_result["value"],
     })
     _recommend(results)
 
@@ -473,6 +555,8 @@ def check_two_stage_performance(
     sarima_forecast=None,
     best_params=None,
     rmse_threshold=20.0,
+    mape_threshold=20.0,
+    aic_threshold=None,
     improvement_threshold=0.20,
     plot=True
 ):
@@ -491,6 +575,8 @@ def check_two_stage_performance(
     sarima_forecast      : array-like, SARIMA-only forecast for comparison (optional)
     best_params          : tuple, SARIMA params used in Stage 2 (optional)
     rmse_threshold       : RMSE% threshold (default 20)
+    mape_threshold       : MAPE threshold in % (default 20)
+    aic_threshold        : AIC upper bound; None = informational only
     improvement_threshold: minimum RMSE improvement over SARIMA (default 20%)
     plot                 : whether to show diagnostic plots
     """
@@ -512,14 +598,20 @@ def check_two_stage_performance(
     rmse      = np.sqrt(np.mean(residuals ** 2))
     mae       = mean_absolute_error(actual, final_forecast)
 
+    # ── AIC from Stage 2 regressor (if it's a SARIMAX fit object) ──
+    aic = getattr(regressor, "aic", None)
+
     # ── SARIMA baseline RMSE ──
     rmse_sarima = np.sqrt(mean_squared_error(actual, sarima_forecast)) \
                   if sarima_forecast is not None else None
 
     # ── Run all checks ──
+    mape_result = check_mape(actual, final_forecast, threshold=mape_threshold)
+
     results = [
         # Regression quality
         check_rmse_percent(rmse, actual, threshold=rmse_threshold, nonzero_only=True),
+        mape_result,
         check_residual_mean(residuals),
         check_residual_skewness(residuals),
         check_ljung_box(residuals),
@@ -528,8 +620,11 @@ def check_two_stage_performance(
         check_spike_capture(actual, final_forecast),
         # Classification quality
         check_zero_classifier(actual, zero_pred),
-        
     ]
+
+    # AIC check — only if regressor exposes .aic (i.e. SARIMAX)
+    if aic is not None:
+        results.insert(2, check_aic(aic, aic_threshold=aic_threshold))
 
     # Add improvement check only if SARIMA baseline exists
     if rmse_sarima is not None:
@@ -541,16 +636,36 @@ def check_two_stage_performance(
     metrics = {
         "RMSE (Two-Stage)" : f"{rmse:.4f}",
         "MAE  (Two-Stage)" : f"{mae:.4f}",
+        "MAPE (Two-Stage)" : mape_result["value"],
         "Best Params"      : str(best_params) if best_params else "N/A",
     }
+    if aic is not None:
+        metrics["AIC (Stage 2)"] = f"{aic:.4f}"
     if rmse_sarima is not None:
-        metrics["RMSE (SARIMA)"]   = f"{rmse_sarima:.4f}"
+        metrics["RMSE (SARIMA)"] = f"{rmse_sarima:.4f}"
         improvement = (rmse_sarima - rmse) / rmse_sarima * 100
-        metrics["Improvement"]     = f"{improvement:.1f}%"
-    mlflow.log_metric("Two-Stage RMSE", rmse)
-    mlflow.log_metric("Two-Stage MAE", mae)
-    mlflow.log_param("Two-Stage Best Params", str(best_params) if best_params else "N/A")
-    
+        metrics["Improvement"]   = f"{improvement:.1f}%"
+
+    # ── MLflow logging ──
+    def _safe_mape_float(mape_val_str):
+        """Parse MAPE value string to float, return None if unparseable (e.g. 'N/A ...')."""
+        try:
+            return float(mape_val_str.replace("%", "").strip())
+        except ValueError:
+            return None
+
+    try:
+        mlflow.log_metric("Two-Stage RMSE", rmse)
+        mlflow.log_metric("Two-Stage MAE",  mae)
+        mape_float = _safe_mape_float(mape_result["value"])
+        if mape_float is not None:
+            mlflow.log_metric("Two-Stage MAPE", mape_float)
+        if aic is not None:
+            mlflow.log_metric("Two-Stage AIC (Stage 2)", aic)
+        mlflow.log_param("Two-Stage Best Params", str(best_params) if best_params else "N/A")
+    except Exception as e:
+        print(f"  ⚠️  MLflow logging skipped (no active run or connection error): {e}")
+
     _print_summary(results, "TWO-STAGE MODEL PERFORMANCE REPORT", metrics)
 
     # ── Classification report ──
@@ -562,7 +677,7 @@ def check_two_stage_performance(
     for line in report.split("\n"):
         print(f"  {line}")
 
-    
+    _recommend(results)
 
     if plot:
         _plot_two_stage(
@@ -602,31 +717,37 @@ def compare_models(actual, sarima_forecast, two_stage_forecast, train=None, plot
         rmse    = np.sqrt(mean_squared_error(actual, pred))
         mae     = mean_absolute_error(actual, pred)
         nonzero = actual[actual > 0].mean()
-        return rmse, mae, (rmse / nonzero * 100) if nonzero else float("inf")
+        rmse_pct = (rmse / nonzero * 100) if nonzero else float("inf")
+        # MAPE on non-zero actuals only
+        mask = actual > 0
+        mape = np.mean(np.abs((actual[mask] - pred[mask]) / actual[mask])) * 100 \
+               if mask.sum() > 0 else float("inf")
+        return rmse, mae, rmse_pct, mape
 
-    rmse_s, mae_s, pct_s = metrics(sarima_forecast)
-    rmse_t, mae_t, pct_t = metrics(two_stage_forecast)
+    rmse_s, mae_s, pct_s, mape_s = metrics(sarima_forecast)
+    rmse_t, mae_t, pct_t, mape_t = metrics(two_stage_forecast)
 
-    print("\n" + "=" * 55)
+    print("\n" + "=" * 60)
     print("         MODEL COMPARISON")
-    print("=" * 55)
-    print(f"  {'Metric':<25} {'SARIMA':>12} {'Two-Stage':>12}")
-    print(f"  {'-'*25} {'-'*12} {'-'*12}")
-    print(f"  {'RMSE':<25} {rmse_s:>12.4f} {rmse_t:>12.4f}")
-    print(f"  {'MAE':<25} {mae_s:>12.4f} {mae_t:>12.4f}")
-    print(f"  {'RMSE % (non-zero mean)':<25} {pct_s:>11.1f}% {pct_t:>11.1f}%")
+    print("=" * 60)
+    print(f"  {'Metric':<28} {'SARIMA':>12} {'Two-Stage':>12}")
+    print(f"  {'-'*28} {'-'*12} {'-'*12}")
+    print(f"  {'RMSE':<28} {rmse_s:>12.4f} {rmse_t:>12.4f}")
+    print(f"  {'MAE':<28} {mae_s:>12.4f} {mae_t:>12.4f}")
+    print(f"  {'MAPE (non-zero actuals)':<28} {mape_s:>11.1f}% {mape_t:>11.1f}%")
+    print(f"  {'RMSE % (non-zero mean)':<28} {pct_s:>11.1f}% {pct_t:>11.1f}%")
     improvement = (rmse_s - rmse_t) / rmse_s * 100
     winner      = "Two-Stage" if rmse_t < rmse_s else "SARIMA"
-    print(f"\n  {'Winner':<25} {winner}")
-    print(f"  {'RMSE Improvement':<25} {improvement:>11.1f}%")
-    print("=" * 55 + "\n")
+    print(f"\n  {'Winner':<28} {winner}")
+    print(f"  {'RMSE Improvement':<28} {improvement:>11.1f}%")
+    print("=" * 60 + "\n")
 
     if plot:
         fig, axes = plt.subplots(2, 1, figsize=(14, 9))
 
         axes[0].plot(actual,             label="Actual",     color="green",  linewidth=1.5)
-        axes[0].plot(sarima_forecast,    label=f"SARIMA (RMSE={rmse_s:.2f})",     color="orange", linewidth=1.2, linestyle="--")
-        axes[0].plot(two_stage_forecast, label=f"Two-Stage (RMSE={rmse_t:.2f})",  color="blue",   linewidth=1.2, linestyle="-.")
+        axes[0].plot(sarima_forecast,    label=f"SARIMA (RMSE={rmse_s:.2f}, MAPE={mape_s:.1f}%)",    color="orange", linewidth=1.2, linestyle="--")
+        axes[0].plot(two_stage_forecast, label=f"Two-Stage (RMSE={rmse_t:.2f}, MAPE={mape_t:.1f}%)", color="blue",   linewidth=1.2, linestyle="-.")
         axes[0].set_title("SARIMA vs Two-Stage vs Actual")
         axes[0].legend(); axes[0].grid(alpha=0.3)
 
@@ -643,7 +764,11 @@ def compare_models(actual, sarima_forecast, two_stage_forecast, train=None, plot
         plt.show()
         print("  📊 Saved: model_comparison.png")
 
-    return {"sarima": (rmse_s, mae_s), "two_stage": (rmse_t, mae_t), "improvement_pct": improvement}
+    return {
+        "sarima"         : (rmse_s, mae_s, mape_s),
+        "two_stage"      : (rmse_t, mae_t, mape_t),
+        "improvement_pct": improvement,
+    }
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -658,18 +783,20 @@ from sarima_diagnostics import (
 
 # ── SARIMA only ──
 sarima_results = check_model_performance(
-    model_fit   = best_model,
-    train       = train,
-    test        = test,
-    forecast    = best_model.forecast(len(test)),
-    best_params = best_params,
-    plot        = True
+    model_fit      = best_model,
+    train          = train,
+    test           = test,
+    forecast       = best_model.forecast(len(test)),
+    best_params    = best_params,
+    mape_threshold = 20.0,    # optional, default 20
+    aic_threshold  = None,    # optional: pass a baseline AIC to gate against
+    plot           = True
 )
 
 # ── Two-Stage ──
 two_stage_results = check_two_stage_performance(
     clf              = clf,
-    regressor        = best_model,
+    regressor        = best_model,   # if SARIMAX, AIC is auto-extracted
     train            = train,
     test             = test,
     final_forecast   = final_forecast_hard,
@@ -677,6 +804,8 @@ two_stage_results = check_two_stage_performance(
     zero_pred_proba  = zero_pred_proba,
     sarima_forecast  = sarima_aligned,
     best_params      = best_params,
+    mape_threshold   = 20.0,         # optional
+    aic_threshold    = None,         # optional
     plot             = True
 )
 

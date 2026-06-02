@@ -1,0 +1,38 @@
+Review and refine the thesis document named `Thesis_doc_ayush_ghimire.docx` for academic submission using Harvard referencing style.
+
+The agent must:
+
+* Correct grammar, spelling, punctuation, and sentence structure mistakes.
+* Improve readability and reduce redundancy/repetitive wording.
+* Maintain the original meaning, arguments, methodology, and academic tone.
+* Do NOT add new research content, theories, methods, or unsupported claims.
+* Preserve all technical details and findings already present.
+
+Reference and citation tasks:
+
+* Check all in-text citations for correctness and consistency.
+* Verify that every citation has a matching bibliography/reference entry.
+* Add missing references to the bibliography where required.
+* Format all references strictly in Harvard style.
+* Ensure bibliography formatting is consistent throughout the document.
+
+Notebook and appendix tasks:
+
+* Review `two-stage-model.ipynb` and `arima.ipynb`.
+* Extract only the necessary and relevant code sections.
+* Add these code snippets into the Appendix section appropriately.
+* Do NOT add unnecessary code or duplicate code.
+
+Formatting tasks:
+
+* Generate a Table of Contents.
+* Generate a List of Figures.
+* Generate a List of Tables.
+* Ensure all figures and tables have proper academic captions and numbering.
+* Ensure figure/table references inside the thesis are correctly linked and mentioned.
+
+Output requirements:
+
+* Produce a polished academic thesis document suitable for university submission.
+* Keep the thesis title and file name as `thesis_documents`.
+* Generate the final output as a properly formatted `.docx` Word document.
